@@ -41,10 +41,10 @@ class YOLODepthEstimator : public OrtSessionBase {
 public:
     /// @brief Constructor
     /// @param modelPath Path to the ONNX model file
-    /// @param useGPU Whether to use GPU (CUDA) for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @throws std::runtime_error if the model does not look like a depth export
-    explicit YOLODepthEstimator(const std::string& modelPath, bool useGPU = false)
-        : OrtSessionBase(modelPath, useGPU) {
+    explicit YOLODepthEstimator(const std::string& modelPath, const DeviceConfig& device = {})
+        : OrtSessionBase(modelPath, device) {
 
         validateDepthOutput();
 
@@ -163,11 +163,11 @@ private:
 
 /// @brief Create a depth estimator
 /// @param modelPath Path to the ONNX model
-/// @param useGPU Whether to use GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @return Unique pointer to estimator
 inline std::unique_ptr<YOLODepthEstimator> createDepthEstimator(const std::string& modelPath,
-                                                                bool useGPU = false) {
-    return std::make_unique<YOLODepthEstimator>(modelPath, useGPU);
+                                                                const DeviceConfig& device = {}) {
+    return std::make_unique<YOLODepthEstimator>(modelPath, device);
 }
 
 } // namespace depth

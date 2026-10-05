@@ -37,5 +37,6 @@ cd "$SCRIPT_DIR"
 print_header "Running API Tests"
 cd build
 ./test_api_batch_and_memory
+./test_device_selection
 
 print_success "API tests completed!"

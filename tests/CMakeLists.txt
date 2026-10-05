@@ -217,10 +217,12 @@ endif()
 # ============================================================================
 set(API_TEST_EXES)
 if(testTask STREQUAL "5" OR testTask STREQUAL "7")
+    add_executable(test_device_selection
+        ${api_path}/test_device_selection.cpp)
     add_executable(test_api_batch_and_memory
         ${api_path}/test_batch_and_memory.cpp)
 
-    list(APPEND API_TEST_EXES test_api_batch_and_memory)
+    list(APPEND API_TEST_EXES test_api_batch_and_memory test_device_selection)
 endif()
 
 # ============================================================================

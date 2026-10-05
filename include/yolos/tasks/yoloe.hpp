@@ -83,13 +83,13 @@ public:
     /// @brief Construct from inline class names (text-prompt or few-class mode)
     /// @param modelPath Path to the ONNX model (exported after set_classes())
     /// @param classNames Class names that were used during model.set_classes() in Python
-    /// @param useGPU Whether to use CUDA GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param agnosticNms Use class-agnostic NMS (recommended; suppresses across classes)
     YOLOEDetector(const std::string& modelPath,
                   const std::vector<std::string>& classNames,
-                  bool useGPU = false,
+                  const DeviceConfig& device = {},
                   bool agnosticNms = true)
-        : det::YOLODetector(modelPath, "", useGPU, YOLOVersion::Auto)
+        : det::YOLODetector(modelPath, "", device, YOLOVersion::Auto)
     {
         if (classNames.empty()) {
             throw std::invalid_argument("YOLOEDetector: classNames must not be empty");
@@ -103,13 +103,13 @@ public:
     /// @brief Construct from a labels file (prompt-free / large fixed vocabulary)
     /// @param modelPath Path to the ONNX model (prompt-free, e.g. yoloe-26s-seg-pf.pt exported)
     /// @param labelsPath One class name per line; line count must match the PF ONNX export
-    /// @param useGPU Whether to use CUDA GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param agnosticNms Use class-agnostic NMS (recommended; suppresses across classes)
     YOLOEDetector(const std::string& modelPath,
                   const std::string& labelsPath,
-                  bool useGPU = false,
+                  const DeviceConfig& device = {},
                   bool agnosticNms = true)
-        : det::YOLODetector(modelPath, labelsPath, useGPU, YOLOVersion::Auto)
+        : det::YOLODetector(modelPath, labelsPath, device, YOLOVersion::Auto)
     {
         agnosticNms_ = agnosticNms;
     }
@@ -118,16 +118,16 @@ public:
     /// @param modelData Pointer to the serialized ONNX model bytes
     /// @param modelSize Size of the buffer in bytes
     /// @param classNames Class names that were used during model.set_classes() in Python
-    /// @param useGPU Whether to use CUDA GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param agnosticNms Use class-agnostic NMS (recommended; suppresses across classes)
     /// @note ONNX Runtime copies the buffer during session creation, so
     ///       @p modelData may be freed once the constructor returns.
     YOLOEDetector(const void* modelData,
                   size_t modelSize,
                   const std::vector<std::string>& classNames,
-                  bool useGPU = false,
+                  const DeviceConfig& device = {},
                   bool agnosticNms = true)
-        : det::YOLODetector(modelData, modelSize, classNames, useGPU, YOLOVersion::Auto)
+        : det::YOLODetector(modelData, modelSize, classNames, device, YOLOVersion::Auto)
     {
         if (classNames.empty()) {
             throw std::invalid_argument("YOLOEDetector: classNames must not be empty");
@@ -170,13 +170,13 @@ public:
     /// @brief Construct from inline class names (text-prompt or few-class mode)
     /// @param modelPath Path to the ONNX model (exported after set_classes())
     /// @param classNames Class names that were used during model.set_classes() in Python
-    /// @param useGPU Whether to use CUDA GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param agnosticNms Use class-agnostic NMS (recommended; suppresses across classes)
     YOLOESegDetector(const std::string& modelPath,
                      const std::vector<std::string>& classNames,
-                     bool useGPU = false,
+                     const DeviceConfig& device = {},
                      bool agnosticNms = true)
-        : seg::YOLOSegDetector(modelPath, "", useGPU)
+        : seg::YOLOSegDetector(modelPath, "", device)
     {
         if (classNames.empty()) {
             throw std::invalid_argument("YOLOESegDetector: classNames must not be empty");
@@ -190,13 +190,13 @@ public:
     /// @brief Construct from a labels file (prompt-free / large fixed vocabulary)
     /// @param modelPath Path to the ONNX model (prompt-free, e.g. yoloe-26s-seg-pf.pt exported)
     /// @param labelsPath One class name per line; line count must match the PF ONNX export
-    /// @param useGPU Whether to use CUDA GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param agnosticNms Use class-agnostic NMS (recommended; suppresses across classes)
     YOLOESegDetector(const std::string& modelPath,
                      const std::string& labelsPath,
-                     bool useGPU = false,
+                     const DeviceConfig& device = {},
                      bool agnosticNms = true)
-        : seg::YOLOSegDetector(modelPath, labelsPath, useGPU)
+        : seg::YOLOSegDetector(modelPath, labelsPath, device)
     {
         agnosticNms_ = agnosticNms;
     }
@@ -205,16 +205,16 @@ public:
     /// @param modelData Pointer to the serialized ONNX model bytes
     /// @param modelSize Size of the buffer in bytes
     /// @param classNames Class names that were used during model.set_classes() in Python
-    /// @param useGPU Whether to use CUDA GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param agnosticNms Use class-agnostic NMS (recommended; suppresses across classes)
     /// @note ONNX Runtime copies the buffer during session creation, so
     ///       @p modelData may be freed once the constructor returns.
     YOLOESegDetector(const void* modelData,
                      size_t modelSize,
                      const std::vector<std::string>& classNames,
-                     bool useGPU = false,
+                     const DeviceConfig& device = {},
                      bool agnosticNms = true)
-        : seg::YOLOSegDetector(modelData, modelSize, classNames, useGPU)
+        : seg::YOLOSegDetector(modelData, modelSize, classNames, device)
     {
         if (classNames.empty()) {
             throw std::invalid_argument("YOLOESegDetector: classNames must not be empty");
@@ -246,95 +246,95 @@ public:
 /// @brief Create a YOLOE open-vocabulary detector from inline class names.
 /// @param modelPath Path to the ONNX model
 /// @param classNames Class names used when exporting the model
-/// @param useGPU Whether to use CUDA GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @param agnosticNms Use class-agnostic NMS (default true)
 /// @return Unique pointer to YOLOEDetector
 inline std::unique_ptr<YOLOEDetector> createYOLOEDetector(
     const std::string& modelPath,
     const std::vector<std::string>& classNames,
-    bool useGPU = false,
+    const DeviceConfig& device = {},
     bool agnosticNms = true)
 {
-    return std::make_unique<YOLOEDetector>(modelPath, classNames, useGPU, agnosticNms);
+    return std::make_unique<YOLOEDetector>(modelPath, classNames, device, agnosticNms);
 }
 
 /// @brief Create a YOLOE open-vocabulary detector from a labels file.
 /// @param modelPath Path to the ONNX model
 /// @param labelsPath One name per line (prompt-free: count must match the ONNX)
-/// @param useGPU Whether to use CUDA GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @param agnosticNms Use class-agnostic NMS (default true)
 /// @return Unique pointer to YOLOEDetector
 inline std::unique_ptr<YOLOEDetector> createYOLOEDetector(
     const std::string& modelPath,
     const std::string& labelsPath,
-    bool useGPU = false,
+    const DeviceConfig& device = {},
     bool agnosticNms = true)
 {
-    return std::make_unique<YOLOEDetector>(modelPath, labelsPath, useGPU, agnosticNms);
+    return std::make_unique<YOLOEDetector>(modelPath, labelsPath, device, agnosticNms);
 }
 
 /// @brief Create a YOLOE open-vocabulary segmentation detector from inline class names.
 /// @param modelPath Path to the ONNX model
 /// @param classNames Class names used when exporting the model
-/// @param useGPU Whether to use CUDA GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @param agnosticNms Use class-agnostic NMS (default true)
 /// @return Unique pointer to YOLOESegDetector
 inline std::unique_ptr<YOLOESegDetector> createYOLOESegDetector(
     const std::string& modelPath,
     const std::vector<std::string>& classNames,
-    bool useGPU = false,
+    const DeviceConfig& device = {},
     bool agnosticNms = true)
 {
-    return std::make_unique<YOLOESegDetector>(modelPath, classNames, useGPU, agnosticNms);
+    return std::make_unique<YOLOESegDetector>(modelPath, classNames, device, agnosticNms);
 }
 
 /// @brief Create a YOLOE open-vocabulary segmentation detector from a labels file.
 /// @param modelPath Path to the ONNX model
 /// @param labelsPath One name per line (prompt-free: count must match the ONNX)
-/// @param useGPU Whether to use CUDA GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @param agnosticNms Use class-agnostic NMS (default true)
 /// @return Unique pointer to YOLOESegDetector
 inline std::unique_ptr<YOLOESegDetector> createYOLOESegDetector(
     const std::string& modelPath,
     const std::string& labelsPath,
-    bool useGPU = false,
+    const DeviceConfig& device = {},
     bool agnosticNms = true)
 {
-    return std::make_unique<YOLOESegDetector>(modelPath, labelsPath, useGPU, agnosticNms);
+    return std::make_unique<YOLOESegDetector>(modelPath, labelsPath, device, agnosticNms);
 }
 
 /// @brief Create a YOLOE open-vocabulary detector from a model held in memory.
 /// @param modelData Pointer to the serialized ONNX model bytes
 /// @param modelSize Size of the buffer in bytes
 /// @param classNames Class names used when exporting the model
-/// @param useGPU Whether to use CUDA GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @param agnosticNms Use class-agnostic NMS (default true)
 /// @return Unique pointer to YOLOEDetector
 inline std::unique_ptr<YOLOEDetector> createYOLOEDetectorFromMemory(
     const void* modelData,
     size_t modelSize,
     const std::vector<std::string>& classNames,
-    bool useGPU = false,
+    const DeviceConfig& device = {},
     bool agnosticNms = true)
 {
-    return std::make_unique<YOLOEDetector>(modelData, modelSize, classNames, useGPU, agnosticNms);
+    return std::make_unique<YOLOEDetector>(modelData, modelSize, classNames, device, agnosticNms);
 }
 
 /// @brief Create a YOLOE open-vocabulary segmentation detector from a model held in memory.
 /// @param modelData Pointer to the serialized ONNX model bytes
 /// @param modelSize Size of the buffer in bytes
 /// @param classNames Class names used when exporting the model
-/// @param useGPU Whether to use CUDA GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @param agnosticNms Use class-agnostic NMS (default true)
 /// @return Unique pointer to YOLOESegDetector
 inline std::unique_ptr<YOLOESegDetector> createYOLOESegDetectorFromMemory(
     const void* modelData,
     size_t modelSize,
     const std::vector<std::string>& classNames,
-    bool useGPU = false,
+    const DeviceConfig& device = {},
     bool agnosticNms = true)
 {
-    return std::make_unique<YOLOESegDetector>(modelData, modelSize, classNames, useGPU, agnosticNms);
+    return std::make_unique<YOLOESegDetector>(modelData, modelSize, classNames, device, agnosticNms);
 }
 
 } // namespace yoloe
