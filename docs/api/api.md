@@ -75,7 +75,7 @@ Main detector — supports YOLO v7, v8, v10, v11, v26, and NAS via runtime auto-
 YOLODetector(
     const std::string& modelPath,   // path to .onnx model
     const std::string& labelsPath,  // path to class-names .txt file
-    bool               useGPU = false,
+    DeviceConfig               device = {},
     YOLOVersion        version = YOLOVersion::Auto
 );
 
@@ -84,7 +84,7 @@ YOLODetector(
     const void*                     modelData,
     size_t                          modelSize,
     const std::vector<std::string>& classNames,  // empty = read ONNX metadata
-    bool                            useGPU = false,
+    DeviceConfig                            device = {},
     YOLOVersion                     version = YOLOVersion::Auto
 );
 
@@ -131,7 +131,7 @@ std::unique_ptr<YOLODetector> yolos::det::createDetector(
     const std::string& modelPath,
     const std::string& labelsPath,
     YOLOVersion        version = YOLOVersion::Auto,
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 
 std::unique_ptr<YOLODetector> yolos::det::createDetectorFromMemory(
@@ -139,7 +139,7 @@ std::unique_ptr<YOLODetector> yolos::det::createDetectorFromMemory(
     size_t                          modelSize,
     const std::vector<std::string>& classNames,
     YOLOVersion                     version = YOLOVersion::Auto,
-    bool                            useGPU = false
+    DeviceConfig                            device = {}
 );
 ```
 
@@ -176,7 +176,7 @@ Supports YOLOv8-seg, YOLOv11-seg, and YOLO26-seg.
 YOLOSegDetector(
     const std::string& modelPath,
     const std::string& labelsPath,
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 
 // Load the model from memory instead of a file (see In-Memory Model Loading)
@@ -184,7 +184,7 @@ YOLOSegDetector(
     const void*                     modelData,
     size_t                          modelSize,
     const std::vector<std::string>& classNames,  // empty = read ONNX metadata
-    bool                            useGPU = false
+    DeviceConfig                            device = {}
 );
 
 // Returns detections with per-instance binary masks
@@ -242,7 +242,7 @@ Supports YOLOv8-pose, YOLOv11-pose, and YOLO26-pose.
 YOLOPoseDetector(
     const std::string& modelPath,
     const std::string& labelsPath = "",  // optional; defaults to "person"
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 
 // Load the model from memory instead of a file (see In-Memory Model Loading)
@@ -250,7 +250,7 @@ YOLOPoseDetector(
     const void*                     modelData,
     size_t                          modelSize,
     const std::vector<std::string>& classNames = {},  // empty = metadata, then "person"
-    bool                            useGPU = false
+    DeviceConfig                            device = {}
 );
 
 std::vector<PoseResult> detect(
@@ -307,7 +307,7 @@ Supports YOLOv8-obb, YOLOv11-obb, and YOLO26-obb.
 YOLOOBBDetector(
     const std::string& modelPath,
     const std::string& labelsPath,
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 
 // Load the model from memory instead of a file (see In-Memory Model Loading)
@@ -315,7 +315,7 @@ YOLOOBBDetector(
     const void*                     modelData,
     size_t                          modelSize,
     const std::vector<std::string>& classNames,  // empty = read ONNX metadata
-    bool                            useGPU = false
+    DeviceConfig                            device = {}
 );
 
 std::vector<OBBResult> detect(
@@ -369,7 +369,7 @@ Supports YOLOv11-cls, YOLOv12-cls, and YOLO26-cls.
 YOLOClassifier(
     const std::string& modelPath,
     const std::string& labelsPath,
-    bool               useGPU = false,
+    DeviceConfig               device = {},
     const cv::Size&    targetInputShape = cv::Size(224, 224)
 );
 
@@ -378,7 +378,7 @@ YOLOClassifier(
     const void*                     modelData,
     size_t                          modelSize,
     const std::vector<std::string>& classNames,
-    bool                            useGPU = false,
+    DeviceConfig                            device = {},
     const cv::Size&                 targetInputShape = cv::Size(224, 224)
 );
 
@@ -408,7 +408,7 @@ std::unique_ptr<YOLOClassifier> yolos::cls::createClassifier(
     const std::string& modelPath,
     const std::string& labelsPath,
     YOLOVersion        version = YOLOVersion::V11,
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 
 std::unique_ptr<YOLOClassifier> yolos::cls::createClassifierFromMemory(
@@ -416,7 +416,7 @@ std::unique_ptr<YOLOClassifier> yolos::cls::createClassifierFromMemory(
     size_t                          modelSize,
     const std::vector<std::string>& classNames,
     YOLOVersion                     version = YOLOVersion::V11,
-    bool                            useGPU = false
+    DeviceConfig                            device = {}
 );
 ```
 
@@ -449,7 +449,7 @@ Defined in `yolos/tasks/depth.hpp`. Requires a YOLO26 `-depth` model.
 ```cpp
 YOLODepthEstimator(
     const std::string& modelPath,
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 
 // Per-pixel metric depth in meters, CV_32FC1, sized to `image`
@@ -471,7 +471,7 @@ immediately rather than producing meaningless depth.
 ```cpp
 std::unique_ptr<YOLODepthEstimator> yolos::depth::createDepthEstimator(
     const std::string& modelPath,
-    bool               useGPU = false
+    DeviceConfig               device = {}
 );
 ```
 
@@ -527,6 +527,52 @@ YOLO("yolo26n-depth.pt").export(format="onnx")
 
 ---
 
+## Device Selection — `yolos::DeviceConfig`
+
+Defined in `yolos/core/device.hpp`. Every constructor and factory takes a `DeviceConfig device`
+(shown as `device = {}` above) that says where the model runs. See the
+[Hardware Acceleration guide](../guides/hardware.md) for the supported hardware and setup.
+
+```cpp
+struct DeviceConfig {
+    std::string device = "cpu";   // "auto" | "cpu" | "cuda[:N]" | "tensorrt[:N]" | "rocm" | "migraphx"
+                                  // | "openvino[:GPU|NPU|CPU|GPU.1]" | "dml[:N]" | "coreml"
+    int         numThreads = 0;   // intra-op threads; 0 = automatic
+    std::string cacheDir;         // compiled-model cache (OpenVINO, CoreML)
+    std::map<std::string, std::string> options;   // raw provider options, passed through
+
+    DeviceConfig(bool useGpu);            // true -> "auto", false -> "cpu"
+    DeviceConfig(int useGpu);             // keeps 0 / 1 literals unambiguous
+    DeviceConfig(const char* device);
+    DeviceConfig(std::string device);
+};
+```
+
+The conversions are implicit, so any of these work:
+
+```cpp
+yolos::det::YOLODetector a("m.onnx", "coco.names", true);             // "auto"
+yolos::det::YOLODetector b("m.onnx", "coco.names", "openvino:GPU");
+yolos::DeviceConfig cfg("openvino:GPU"); cfg.cacheDir = "/tmp/yolos";
+yolos::det::YOLODetector c("m.onnx", "coco.names", cfg);
+```
+
+If the requested hardware is missing, cannot start, or fails to load the model, the session is
+created on the CPU and a warning is logged; it never throws for that reason. Use `getDevice()` to see
+what was selected.
+
+```cpp
+std::vector<std::string> yolos::availableDevices();             // e.g. {"cpu", "openvino:GPU"}
+std::vector<std::string> yolos::availableExecutionProviders();  // raw ONNX Runtime provider names
+
+// Pure logic behind the selection, usable without ONNX Runtime (yolos/core/device.hpp)
+yolos::DeviceSpec       yolos::parseDevice(const std::string& request);
+yolos::DeviceResolution yolos::resolveDevice(const std::string& request,
+                                             const std::vector<std::string>& availableProviders);
+```
+
+---
+
 ## Base Session — `yolos::OrtSessionBase`
 
 Defined in `yolos/core/session_base.hpp`. All detectors inherit from this — you normally don't need to use it directly.
@@ -537,7 +583,7 @@ bool        isDynamicInputShape() const noexcept;
 bool        isDynamicBatchSize()  const noexcept;  // true if the ONNX batch dim is dynamic
 int         getModelBatchSize()   const noexcept;  // fixed batch size, or -1 if dynamic
 bool        supportsBatchSize(size_t count) const noexcept;  // can one call take `count` images?
-std::string getDevice()           const noexcept;  // "cpu" or "gpu"
+std::string getDevice()           const noexcept;  // device in use: "cpu", "cuda", "openvino:GPU", ...
 size_t      getNumInputNodes()    const noexcept;
 size_t      getNumOutputNodes()   const noexcept;
 ```

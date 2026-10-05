@@ -195,3 +195,23 @@ Run with:
 ```bash
 docker-compose up
 ```
+
+---
+
+## Intel GPU / NPU (OpenVINO)
+
+`Dockerfile.openvino` builds YOLOs-CPP against an ONNX Runtime with the OpenVINO provider and the
+Intel GPU drivers. It is a development and hardware-test image (it keeps the compiler and tests).
+
+```bash
+docker build -t yolos-cpp:openvino -f Dockerfile.openvino .
+
+# Linux host
+docker run --rm --device /dev/dri --group-add "$(stat -c %g /dev/dri/render* | head -1)" yolos-cpp:openvino
+
+# Windows host (Docker Desktop, WSL2 backend)
+docker run --rm --device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl:ro yolos-cpp:openvino
+```
+
+See [docs/guides/hardware.md](docs/guides/hardware.md) for the other hardware, device names and
+troubleshooting.

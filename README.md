@@ -138,6 +138,26 @@ cd YOLOs-CPP
 ./build/image_inference models/yolo11n.onnx data/dog.jpg
 ```
 
+### Hardware acceleration
+
+Pick the hardware with a device name (`"cpu"`, `"auto"`, `"cuda"`, `"openvino:GPU"`, `"dml"`, `"coreml"`, ...);
+`true` / `false` still work. If the hardware is unavailable the library falls back to the CPU.
+
+```cpp
+yolos::det::YOLODetector detector("model.onnx", "coco.names", "openvino:GPU");   // Intel iGPU / Arc
+```
+
+Fetch an ONNX Runtime that contains your provider and check what the build can use:
+
+```bash
+scripts/fetch_onnxruntime.sh openvino 1.20.0 third_party       # Windows: scripts\fetch_onnxruntime.ps1
+cmake -S . -B build -DONNXRUNTIME_DIR=third_party/onnxruntime-openvino-1.20.0 && cmake --build build
+./build/device_check                                           # lists devices; `device_check model.onnx` benchmarks
+```
+
+See the **[Hardware Acceleration guide](docs/guides/hardware.md)** for NVIDIA, Intel, AMD, DirectML, Apple,
+Docker (`Dockerfile.openvino`) and the tested-hardware matrix.
+
 <details>
 <summary><strong>📦 Manual CMake Build</strong></summary>
 
