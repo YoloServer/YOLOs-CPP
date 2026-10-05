@@ -26,6 +26,8 @@
 #include <thread>
 #include <vector>
 
+#include "yolos/core/device.hpp"
+#include "yolos/core/providers.hpp"
 #include "yolos/core/version.hpp"
 #include "yolos/core/utils.hpp"
 #include "yolos/core/preprocessing.hpp"
@@ -102,23 +104,23 @@ public:
     /// @brief Constructor
     /// @param modelPath Path to the ONNX model file
     /// @param labelsPath Path to the class names file
-    /// @param useGPU Whether to use GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param targetInputShape Target input shape for preprocessing
     YOLOClassifier(const std::string& modelPath,
                    const std::string& labelsPath,
-                   bool useGPU = false,
+                   const DeviceConfig& device = {},
                    const cv::Size& targetInputShape = cv::Size(224, 224))
         : inputImageShape_(targetInputShape),
           env_(ORT_LOGGING_LEVEL_WARNING, "YOLOClassifier") {
 
-        configureSessionOptions(useGPU);
-
+        createSession(device, [&] {
 #ifdef _WIN32
-        std::wstring wModelPath(modelPath.begin(), modelPath.end());
-        session_ = Ort::Session(env_, wModelPath.c_str(), sessionOptions_);
+            std::wstring wModelPath(modelPath.begin(), modelPath.end());
+            session_ = Ort::Session(env_, wModelPath.c_str(), sessionOptions_);
 #else
-        session_ = Ort::Session(env_, modelPath.c_str(), sessionOptions_);
+            session_ = Ort::Session(env_, modelPath.c_str(), sessionOptions_);
 #endif
+        });
 
         introspectSession(modelPath);
         classNames_ = utils::getClassNames(labelsPath);
@@ -128,14 +130,14 @@ public:
     /// @param modelData Pointer to the serialized ONNX model bytes
     /// @param modelSize Size of the buffer in bytes
     /// @param classNames Class names in class-id order
-    /// @param useGPU Whether to use GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @param targetInputShape Target input shape for preprocessing
     /// @note ONNX Runtime copies the buffer during session creation, so
     ///       @p modelData may be freed once the constructor returns.
     YOLOClassifier(const void* modelData,
                    size_t modelSize,
                    const std::vector<std::string>& classNames,
-                   bool useGPU = false,
+                   const DeviceConfig& device = {},
                    const cv::Size& targetInputShape = cv::Size(224, 224))
         : inputImageShape_(targetInputShape),
           env_(ORT_LOGGING_LEVEL_WARNING, "YOLOClassifier") {
@@ -144,9 +146,9 @@ public:
             throw std::invalid_argument("Model buffer is empty (modelData == nullptr or modelSize == 0).");
         }
 
-        configureSessionOptions(useGPU);
-
-        session_ = Ort::Session(env_, modelData, modelSize, sessionOptions_);
+        createSession(device, [&] {
+            session_ = Ort::Session(env_, modelData, modelSize, sessionOptions_);
+        });
 
         introspectSession("<memory buffer, " + std::to_string(modelSize) + " bytes>");
         classNames_ = classNames;
@@ -237,10 +239,14 @@ public:
     /// @brief Get class names
     [[nodiscard]] const std::vector<std::string>& getClassNames() const { return classNames_; }
 
+    /// @brief Device the model runs on ("cpu", "cuda", "openvino:GPU", ...)
+    [[nodiscard]] const std::string& getDevice() const noexcept { return device_; }
+
 protected:
     cv::Size inputImageShape_;
     Ort::Env env_{nullptr};
     Ort::SessionOptions sessionOptions_{nullptr};
+    std::string device_{"cpu"};
     Ort::Session session_{nullptr};
     bool isDynamicInputShape_{false};
     bool isDynamicBatchSize_{false};
@@ -302,18 +308,23 @@ protected:
         return results;
     }
 
-    void configureSessionOptions(bool useGPU) {
+    /// @brief Configure the execution provider and create the session, retrying on the CPU if the
+    /// accelerator fails while the model loads
+    template <typename CreateFn>
+    void createSession(DeviceConfig device, CreateFn create) {
+        const int defaultThreads = std::min(4, static_cast<int>(std::thread::hardware_concurrency()));
         sessionOptions_ = Ort::SessionOptions();
-        sessionOptions_.SetIntraOpNumThreads(std::min(4, static_cast<int>(std::thread::hardware_concurrency())));
-        sessionOptions_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-
-        std::vector<std::string> providers = Ort::GetAvailableProviders();
-        if (useGPU && std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") != providers.end()) {
-            OrtCUDAProviderOptions cudaOptions{};
-            sessionOptions_.AppendExecutionProvider_CUDA(cudaOptions);
-            std::cout << "[INFO] Classification using GPU (CUDA)" << std::endl;
-        } else {
-            std::cout << "[INFO] Classification using CPU" << std::endl;
+        device_ = configureSession(sessionOptions_, device, defaultThreads);
+        try {
+            create();
+        } catch (const Ort::Exception& e) {
+            if (device_ == "cpu") throw;
+            std::cout << "[WARNING] Could not load the model on " << device_ << " (" << e.what()
+                      << "). Falling back to CPU." << std::endl;
+            device.device = "cpu";
+            sessionOptions_ = Ort::SessionOptions();
+            device_ = configureSession(sessionOptions_, device, defaultThreads);
+            create();
         }
     }
 
@@ -464,34 +475,34 @@ protected:
 /// @brief YOLOv11 classifier
 class YOLO11Classifier : public YOLOClassifier {
 public:
-    YOLO11Classifier(const std::string& modelPath, const std::string& labelsPath, bool useGPU = false)
-        : YOLOClassifier(modelPath, labelsPath, useGPU) {}
+    YOLO11Classifier(const std::string& modelPath, const std::string& labelsPath, const DeviceConfig& device = {})
+        : YOLOClassifier(modelPath, labelsPath, device) {}
 
     YOLO11Classifier(const void* modelData, size_t modelSize,
-                     const std::vector<std::string>& classNames, bool useGPU = false)
-        : YOLOClassifier(modelData, modelSize, classNames, useGPU) {}
+                     const std::vector<std::string>& classNames, const DeviceConfig& device = {})
+        : YOLOClassifier(modelData, modelSize, classNames, device) {}
 };
 
 /// @brief YOLOv12 classifier
 class YOLO12Classifier : public YOLOClassifier {
 public:
-    YOLO12Classifier(const std::string& modelPath, const std::string& labelsPath, bool useGPU = false)
-        : YOLOClassifier(modelPath, labelsPath, useGPU) {}
+    YOLO12Classifier(const std::string& modelPath, const std::string& labelsPath, const DeviceConfig& device = {})
+        : YOLOClassifier(modelPath, labelsPath, device) {}
 
     YOLO12Classifier(const void* modelData, size_t modelSize,
-                     const std::vector<std::string>& classNames, bool useGPU = false)
-        : YOLOClassifier(modelData, modelSize, classNames, useGPU) {}
+                     const std::vector<std::string>& classNames, const DeviceConfig& device = {})
+        : YOLOClassifier(modelData, modelSize, classNames, device) {}
 };
 
 /// @brief YOLO26 classifier
 class YOLO26Classifier : public YOLOClassifier {
 public:
-    YOLO26Classifier(const std::string& modelPath, const std::string& labelsPath, bool useGPU = false)
-        : YOLOClassifier(modelPath, labelsPath, useGPU) {}
+    YOLO26Classifier(const std::string& modelPath, const std::string& labelsPath, const DeviceConfig& device = {})
+        : YOLOClassifier(modelPath, labelsPath, device) {}
 
     YOLO26Classifier(const void* modelData, size_t modelSize,
-                     const std::vector<std::string>& classNames, bool useGPU = false)
-        : YOLOClassifier(modelData, modelSize, classNames, useGPU) {}
+                     const std::vector<std::string>& classNames, const DeviceConfig& device = {})
+        : YOLOClassifier(modelData, modelSize, classNames, device) {}
 };
 
 // ============================================================================
@@ -502,19 +513,19 @@ public:
 /// @param modelPath Path to the ONNX model
 /// @param labelsPath Path to the class names file
 /// @param version YOLO version
-/// @param useGPU Whether to use GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @return Unique pointer to classifier
 inline std::unique_ptr<YOLOClassifier> createClassifier(const std::string& modelPath,
                                                         const std::string& labelsPath,
                                                         YOLOVersion version = YOLOVersion::V11,
-                                                        bool useGPU = false) {
+                                                        const DeviceConfig& device = {}) {
     switch (version) {
         case YOLOVersion::V26:
-            return std::make_unique<YOLO26Classifier>(modelPath, labelsPath, useGPU);
+            return std::make_unique<YOLO26Classifier>(modelPath, labelsPath, device);
         case YOLOVersion::V12:
-            return std::make_unique<YOLO12Classifier>(modelPath, labelsPath, useGPU);
+            return std::make_unique<YOLO12Classifier>(modelPath, labelsPath, device);
         default:
-            return std::make_unique<YOLO11Classifier>(modelPath, labelsPath, useGPU);
+            return std::make_unique<YOLO11Classifier>(modelPath, labelsPath, device);
     }
 }
 
@@ -523,20 +534,20 @@ inline std::unique_ptr<YOLOClassifier> createClassifier(const std::string& model
 /// @param modelSize Size of the buffer in bytes
 /// @param classNames Class names in class-id order
 /// @param version YOLO version
-/// @param useGPU Whether to use GPU
+/// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
 /// @return Unique pointer to classifier
 inline std::unique_ptr<YOLOClassifier> createClassifierFromMemory(const void* modelData,
                                                                   size_t modelSize,
                                                                   const std::vector<std::string>& classNames,
                                                                   YOLOVersion version = YOLOVersion::V11,
-                                                                  bool useGPU = false) {
+                                                                  const DeviceConfig& device = {}) {
     switch (version) {
         case YOLOVersion::V26:
-            return std::make_unique<YOLO26Classifier>(modelData, modelSize, classNames, useGPU);
+            return std::make_unique<YOLO26Classifier>(modelData, modelSize, classNames, device);
         case YOLOVersion::V12:
-            return std::make_unique<YOLO12Classifier>(modelData, modelSize, classNames, useGPU);
+            return std::make_unique<YOLO12Classifier>(modelData, modelSize, classNames, device);
         default:
-            return std::make_unique<YOLO11Classifier>(modelData, modelSize, classNames, useGPU);
+            return std::make_unique<YOLO11Classifier>(modelData, modelSize, classNames, device);
     }
 }
 

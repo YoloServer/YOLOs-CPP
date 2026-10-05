@@ -54,11 +54,11 @@ public:
     /// @brief Constructor
     /// @param modelPath Path to the ONNX model file
     /// @param labelsPath Path to the class names file (optional for pose)
-    /// @param useGPU Whether to use GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     YOLOPoseDetector(const std::string& modelPath,
                      const std::string& labelsPath = "",
-                     bool useGPU = false)
-        : OrtSessionBase(modelPath, useGPU) {
+                     const DeviceConfig& device = {})
+        : OrtSessionBase(modelPath, device) {
         
         if (!labelsPath.empty()) {
             classNames_ = utils::getClassNames(labelsPath);
@@ -76,14 +76,14 @@ public:
     /// @param modelSize Size of the buffer in bytes
     /// @param classNames Class names in class-id order; when empty, the ONNX
     ///        metadata names are used, falling back to {"person"}
-    /// @param useGPU Whether to use GPU for inference
+    /// @param device Where to run: DeviceConfig, device string ("auto", "cuda", "openvino:GPU", ...) or bool
     /// @note ONNX Runtime copies the buffer during session creation, so
     ///       @p modelData may be freed once the constructor returns.
     YOLOPoseDetector(const void* modelData,
                      size_t modelSize,
                      const std::vector<std::string>& classNames = {},
-                     bool useGPU = false)
-        : OrtSessionBase(modelData, modelSize, useGPU) {
+                     const DeviceConfig& device = {})
+        : OrtSessionBase(modelData, modelSize, device) {
 
         if (!classNames.empty()) {
             classNames_ = classNames;

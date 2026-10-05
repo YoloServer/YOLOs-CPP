@@ -60,6 +60,7 @@ nav:
     - Architecture: guides/architecture.md
     - Benchmarks: guides/benchmarks.md
     - Quantization: guides/quantization.md
+    - Hardware Acceleration: guides/hardware.md
   - API Reference: api/api.md
   - Examples:
     - Code Examples: examples/examples.md

@@ -139,15 +139,16 @@ function(add_yolo_executable name source)
     
     # Platform-specific runtime library handling
     if(WIN32)
-        # Copy ONNX Runtime DLL to output directory
-        set(ONNXRUNTIME_DLL "${ONNXRUNTIME_DIR}/lib/onnxruntime.dll")
-        if(EXISTS "${ONNXRUNTIME_DLL}")
+        # Copy every ONNX Runtime DLL to the output directory: besides onnxruntime.dll the
+        # OpenVINO / DirectML / CUDA builds ship provider DLLs that are loaded from beside the exe
+        file(GLOB ONNXRUNTIME_DLLS "${ONNXRUNTIME_DIR}/lib/*.dll")
+        foreach(ONNXRUNTIME_DLL ${ONNXRUNTIME_DLLS})
             add_custom_command(TARGET ${name} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${ONNXRUNTIME_DLL}"
                 "$<TARGET_FILE_DIR:${name}>"
             )
-        endif()
+        endforeach()
     elseif(UNIX AND NOT APPLE)
         # Set RPATH for runtime library discovery
         set_target_properties(${name} PROPERTIES
@@ -176,6 +177,7 @@ add_yolo_executable(camera_inference src/camera_inference.cpp)
 add_yolo_executable(class_image_inference src/class_image_inference.cpp)
 add_yolo_executable(batch_image_inference src/batch_image_inference.cpp)
 add_yolo_executable(image_depth_inference src/image_depth_inference.cpp)
+add_yolo_executable(device_check src/device_check.cpp)
 
 # ============================================================================
 # Examples (optional)

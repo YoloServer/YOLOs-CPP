@@ -19,8 +19,10 @@
 #include <thread>
 #include <vector>
 
+#include "yolos/core/device.hpp"
 #include "yolos/core/onnx_metadata.hpp"
 #include "yolos/core/preprocessing.hpp"
+#include "yolos/core/providers.hpp"
 #include "yolos/core/utils.hpp"
 #include "yolos/core/version.hpp"
 
@@ -36,19 +38,20 @@ class OrtSessionBase {
 public:
     /// @brief Constructor - loads and initializes the ONNX model
     /// @param modelPath Path to the ONNX model file
-    /// @param useGPU Whether to use GPU (CUDA) for inference
+    /// @param device Where to run: a DeviceConfig, a device string ("auto", "cuda", "openvino:GPU", ...)
+    ///               or a bool (true = "auto", false = "cpu")
     /// @param numThreads Number of intra-op threads (0 = auto)
-    OrtSessionBase(const std::string& modelPath, bool useGPU = false, int numThreads = 0)
+    OrtSessionBase(const std::string& modelPath, const DeviceConfig& device = {}, int numThreads = 0)
         : env_(ORT_LOGGING_LEVEL_WARNING, "YOLOS") {
 
-        configureSessionOptions(useGPU, numThreads);
-
+        createSession(device, numThreads, [&] {
 #ifdef _WIN32
-        std::wstring wModelPath(modelPath.begin(), modelPath.end());
-        session_ = Ort::Session(env_, wModelPath.c_str(), sessionOptions_);
+            std::wstring wModelPath(modelPath.begin(), modelPath.end());
+            session_ = Ort::Session(env_, wModelPath.c_str(), sessionOptions_);
 #else
-        session_ = Ort::Session(env_, modelPath.c_str(), sessionOptions_);
+            session_ = Ort::Session(env_, modelPath.c_str(), sessionOptions_);
 #endif
+        });
 
         introspectSession(modelPath);
     }
@@ -56,21 +59,21 @@ public:
     /// @brief Constructor - initializes the ONNX model from an in-memory buffer
     /// @param modelData Pointer to the serialized ONNX model bytes
     /// @param modelSize Size of the buffer in bytes
-    /// @param useGPU Whether to use GPU (CUDA) for inference
+    /// @param device Where to run (see the path constructor)
     /// @param numThreads Number of intra-op threads (0 = auto)
     /// @note ONNX Runtime copies the buffer while creating the session, so the
     ///       caller may free @p modelData as soon as the constructor returns.
     ///       Useful for encrypted stores, network streams and embedded resources.
-    OrtSessionBase(const void* modelData, size_t modelSize, bool useGPU = false, int numThreads = 0)
+    OrtSessionBase(const void* modelData, size_t modelSize, const DeviceConfig& device = {}, int numThreads = 0)
         : env_(ORT_LOGGING_LEVEL_WARNING, "YOLOS") {
 
         if (modelData == nullptr || modelSize == 0) {
             throw std::invalid_argument("Model buffer is empty (modelData == nullptr or modelSize == 0).");
         }
 
-        configureSessionOptions(useGPU, numThreads);
-
-        session_ = Ort::Session(env_, modelData, modelSize, sessionOptions_);
+        createSession(device, numThreads, [&] {
+            session_ = Ort::Session(env_, modelData, modelSize, sessionOptions_);
+        });
 
         introspectSession("<memory buffer, " + std::to_string(modelSize) + " bytes>");
     }
@@ -258,29 +261,26 @@ protected:
     }
 
 private:
-    void configureSessionOptions(bool useGPU, int numThreads) {
+    /// @brief Configure the execution provider and create the session
+    /// If an accelerator is accepted at configuration time but fails while the model loads
+    /// (missing driver, unsupported graph), the session is created again on the CPU.
+    template <typename CreateFn>
+    void createSession(DeviceConfig device, int numThreads, CreateFn create) {
+        if (numThreads > 0) device.numThreads = numThreads;
+        const int defaultThreads = std::min(6, static_cast<int>(std::thread::hardware_concurrency()));
+
         sessionOptions_ = Ort::SessionOptions();
-
-        // Set thread count
-        int threads = (numThreads > 0) ? numThreads : std::min(6, static_cast<int>(std::thread::hardware_concurrency()));
-        sessionOptions_.SetIntraOpNumThreads(threads);
-        sessionOptions_.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-
-        // Configure execution provider
-        std::vector<std::string> availableProviders = Ort::GetAvailableProviders();
-        auto cudaIt = std::find(availableProviders.begin(), availableProviders.end(), "CUDAExecutionProvider");
-
-        if (useGPU && cudaIt != availableProviders.end()) {
-            OrtCUDAProviderOptions cudaOptions{};
-            sessionOptions_.AppendExecutionProvider_CUDA(cudaOptions);
-            device_ = "gpu";
-            std::cout << "[INFO] Inference device: GPU (CUDA)" << std::endl;
-        } else {
-            if (useGPU) {
-                std::cout << "[WARNING] GPU requested but CUDA not available. Falling back to CPU." << std::endl;
-            }
-            device_ = "cpu";
-            std::cout << "[INFO] Inference device: CPU" << std::endl;
+        device_ = configureSession(sessionOptions_, device, defaultThreads);
+        try {
+            create();
+        } catch (const Ort::Exception& e) {
+            if (device_ == "cpu") throw;
+            std::cout << "[WARNING] Could not load the model on " << device_ << " (" << e.what()
+                      << "). Falling back to CPU." << std::endl;
+            device.device = "cpu";
+            sessionOptions_ = Ort::SessionOptions();
+            device_ = configureSession(sessionOptions_, device, defaultThreads);
+            create();
         }
     }
 
