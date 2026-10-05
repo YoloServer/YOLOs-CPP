@@ -147,13 +147,41 @@ container could not reach the GPU; look for the warning above it.
 
 ## Native installation
 
-Native builds avoid Docker's GPU limits and are the only option for Apple Silicon. Windows needs a C++
-toolchain (Visual Studio Build Tools), CMake and OpenCV; see
-[Windows 11 Guide](../YOLOs-CPP_on_Windows_11.md). Then fetch the ONNX Runtime for your hardware as
-above and pass it with `-DONNXRUNTIME_DIR`.
+Native builds avoid Docker's GPU limits and are the only option for Apple Silicon.
 
-On Windows, run the OpenVINO or DirectML build with the provider DLLs next to the executable; the
-fetch script puts them in one folder and the CMake build copies them to the output directory.
+### Windows (PowerShell)
+
+Needs the Visual Studio 2022 Build Tools (C++ workload), CMake and OpenCV. This is what the Intel and
+DirectML results below were built with:
+
+```powershell
+winget install Kitware.CMake
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+# OpenCV: the prebuilt "opencv-4.x-windows.exe" from https://github.com/opencv/opencv/releases (self-extracting)
+
+# In a "x64 Native Tools Command Prompt for VS 2022", or after running vcvars64.bat:
+.\scripts\fetch_onnxruntime.ps1 -Backend openvino -Version 1.20.0 -OutDir third_party   # or: -Backend directml -Version 1.20.1
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+      -DOpenCV_DIR=C:\opencv\build -DONNXRUNTIME_DIR=third_party\onnxruntime-openvino-1.20.0
+cmake --build build --config Release --target device_check
+$env:PATH = "C:\opencv\build\x64\vc16\bin;$env:PATH"      # OpenCV DLLs
+.\build\Release\device_check.exe model.onnx
+```
+
+The CMake build copies every DLL of the ONNX Runtime folder (`onnxruntime.dll` plus the OpenVINO or
+DirectML provider DLLs) next to the executables, so nothing else needs installing besides the GPU
+driver. See also the [Windows 11 Guide](../YOLOs-CPP_on_Windows_11.md).
+
+### Linux / macOS
+
+```bash
+scripts/fetch_onnxruntime.sh <cpu|cuda|openvino|coreml> 1.20.0 third_party
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DONNXRUNTIME_DIR=third_party/onnxruntime-<backend>-1.20.0
+cmake --build build
+```
+
+On Linux the Intel GPU also needs the Intel compute runtime (`intel-opencl-icd`, `libze-intel-gpu1`);
+`Dockerfile.openvino` shows the package list.
 
 ## Support matrix
 
@@ -161,12 +189,13 @@ fetch script puts them in one folder and the CMake build copies them to the outp
 |---|---|---|---|
 | CPU | `cpu` | Linux (Docker), x86-64 | Tested |
 | Intel Iris Xe (11th gen, `0x9a49`) | `openvino:GPU` | Docker Desktop on Windows (WSL2) | Tested: `yolo11n` 640x640 runs in 16 ms/frame on the iGPU vs 114 ms on the CPU in the same container (see below) |
-| Intel Iris Xe | `openvino:GPU` | Windows, native | See [Testing](#testing-on-your-hardware) |
+| Intel Iris Xe | `openvino:GPU` | Windows, native | Tested: `yolo11n` 18 ms/frame on the iGPU vs 83 ms on the CPU |
 | Intel Arc, Core Ultra iGPU / NPU | `openvino` | Linux, Windows | Untested |
 | NVIDIA | `cuda` | Linux, Windows | Code path from earlier releases; not re-tested with `DeviceConfig` |
 | NVIDIA | `tensorrt` | Linux, Windows | Untested |
 | AMD | `rocm`, `migraphx` | Linux | Untested |
-| Any DirectX 12 GPU | `dml` | Windows | Untested |
+| Intel Iris Xe | `dml` | Windows, native | Tested: `yolo11n` 44 ms/frame on the iGPU vs 94 ms on the CPU (OpenVINO is faster on Intel) |
+| AMD, NVIDIA | `dml` | Windows | Untested |
 | Apple Silicon | `coreml` | macOS | Untested |
 
 "Untested" means the code compiles and the fallback to CPU is tested, but nobody has run it on that
