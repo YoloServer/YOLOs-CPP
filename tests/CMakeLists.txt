@@ -300,7 +300,16 @@ foreach(target ${API_TEST_EXES})
         Threads::Threads
     )
 
-    if(UNIX AND NOT APPLE)
+    if(WIN32)
+        # Tests are run right after linking (test discovery), so the ONNX Runtime DLLs
+        # (onnxruntime.dll plus any provider DLLs) must already sit beside them
+        file(GLOB ONNXRUNTIME_DLLS "${ONNXRUNTIME_DIR}/lib/*.dll")
+        foreach(ONNXRUNTIME_DLL ${ONNXRUNTIME_DLLS})
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_DLL}" "$<TARGET_FILE_DIR:${target}>")
+        endforeach()
+    elseif(UNIX AND NOT APPLE)
         set_target_properties(${target} PROPERTIES
             BUILD_RPATH "${ONNXRUNTIME_DIR}/lib"
             INSTALL_RPATH "${ONNXRUNTIME_DIR}/lib"
@@ -335,7 +344,16 @@ foreach(target ${DEPTH_TEST_EXES})
         Threads::Threads
     )
 
-    if(UNIX AND NOT APPLE)
+    if(WIN32)
+        # Tests are run right after linking (test discovery), so the ONNX Runtime DLLs
+        # (onnxruntime.dll plus any provider DLLs) must already sit beside them
+        file(GLOB ONNXRUNTIME_DLLS "${ONNXRUNTIME_DIR}/lib/*.dll")
+        foreach(ONNXRUNTIME_DLL ${ONNXRUNTIME_DLLS})
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_DLL}" "$<TARGET_FILE_DIR:${target}>")
+        endforeach()
+    elseif(UNIX AND NOT APPLE)
         set_target_properties(${target} PROPERTIES
             BUILD_RPATH "${ONNXRUNTIME_DIR}/lib"
             INSTALL_RPATH "${ONNXRUNTIME_DIR}/lib"

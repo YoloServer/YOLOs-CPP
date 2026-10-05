@@ -1,0 +1,55 @@
+# ============================================================================
+# YOLOs-CPP Docker Image: Intel GPU / NPU / CPU through OpenVINO
+# ============================================================================
+# Build, test and run YOLOs-CPP on Intel hardware (Iris Xe / UHD iGPU, Arc, Core Ultra NPU).
+# This is a development and hardware-test image: it keeps the compiler and the test suite.
+#
+# Build:
+#   docker build -t yolos-cpp:openvino -f Dockerfile.openvino .
+#
+# Run (pick the line for your host; see docs/guides/hardware.md):
+#   Linux host:
+#     docker run --rm --device /dev/dri --group-add "$(stat -c %g /dev/dri/render* | head -1)" \
+#         yolos-cpp:openvino
+#   Windows (Docker Desktop, WSL2 backend):
+#     docker run --rm --device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl:ro yolos-cpp:openvino
+#
+# The default command lists the devices ONNX Runtime can see and benchmarks the synthetic test
+# model on each. Pass your own command to run something else, e.g. `device_check /models/y.onnx`.
+# ============================================================================
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Build tools + OpenCV, and the Intel compute runtime (the OpenCL / Level Zero drivers that
+# OpenVINO's GPU plugin loads at run time).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake pkg-config ca-certificates curl unzip git \
+        libopencv-dev \
+        python3 python3-pip python3-onnx python3-numpy \
+        intel-opencl-icd libze-intel-gpu1 libze1 clinfo \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+COPY scripts/fetch_onnxruntime.sh scripts/fetch_onnxruntime.sh
+
+# ONNX Runtime with the OpenVINO execution provider (+ the OpenVINO runtime and Intel plugins)
+ARG ONNXRUNTIME_VERSION=1.20.0
+RUN bash scripts/fetch_onnxruntime.sh openvino ${ONNXRUNTIME_VERSION} /opt \
+    && ln -s /opt/onnxruntime-openvino-${ONNXRUNTIME_VERSION} /opt/onnxruntime
+
+COPY . /src
+
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DONNXRUNTIME_DIR=/opt/onnxruntime \
+    && cmake --build build --target device_check -j"$(nproc)"
+
+# Device-selection tests, run against synthetic models (no weights needed)
+RUN python3 tests/api/make_synthetic_models.py tests/api/models >/dev/null \
+    && cmake -S tests -B build-tests -DtestTask=7 -DCMAKE_BUILD_TYPE=Release -DONNXRUNTIME_DIR=/opt/onnxruntime \
+    && cmake --build build-tests --target test_device_selection -j"$(nproc)"
+
+# Docker Desktop (WSL2) exposes the GPU through /dev/dxg; its user-mode libraries live here
+ENV LD_LIBRARY_PATH=/usr/lib/wsl/lib
+ENV PATH=/src/build:/src/build-tests:$PATH
+
+CMD ["bash", "-c", "device_check tests/api/models/det_dynamic.onnx && test_device_selection"]

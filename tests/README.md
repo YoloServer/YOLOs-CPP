@@ -18,16 +18,17 @@ Ultralytics reference run.
 | OBB | 7 | — | 7 | YOLOv8, v11, YOLO26 | ✅ Pass |
 | YOLOE | 8 | — | 8 | yoloe-26n-seg (open-vocab, export + ONNX parity) | ✅ Pass |
 | API (batch + in-memory) | — | 22 | 22 | synthetic ONNX (no weights needed) | ✅ Pass |
+| Device selection | — | 17 (13 logic, 4 session fallback) | 17 | synthetic ONNX (no GPU needed) | ✅ Pass |
 | Depth | 7 | 25 (postprocessing + synthetic) | 32 | yolo26n-depth (metric depth, dense-map parity) | ✅ Pass |
-| **Total** | **50** | **57** | **107** | | **100%** |
+| **Total** | **50** | **74** | **124** | | **100%** |
 
 Counts are gtest cases, read off `--gtest_list_tests` of the built binaries.
 
 Detection, classification and depth compile their self-contained tests into the same
 `compare_*` binary as their parity tests, so both halves run in one job. The API
-suite is its own binary, `test_api_batch_and_memory`, with no parity half.
+suites are their own binaries, `test_api_batch_and_memory` and `test_device_selection`, with no parity half.
 
-Of the 57 self-contained tests, 27 need nothing but the compiler and can be run
+Of the 74 self-contained tests, 40 need no model files or Python and can be run
 directly after a build:
 
 ```bash
@@ -35,9 +36,10 @@ cd build
 ./compare_detection_results     --gtest_filter='LetterboxConsistency.*'   #  3
 ./compare_classification_results --gtest_filter='AntialiasResize.*'        #  7
 ./compare_depth_results --gtest_filter='CropLetterboxAndResize.*:ColorizeDepth.*:DrawDepthMap.*'  # 17
+./test_device_selection --gtest_filter='DeviceParse.*:DeviceConfigConversions.*:DeviceResolve.*'  # 13
 ```
 
-The remaining 30 — the 22 API tests and the 8 `SyntheticDepthTest` cases — need
+The remaining 34 — the 22 API tests, the 8 `SyntheticDepthTest` cases and the 4 `DeviceSessionTest` cases — need
 Python to generate their synthetic ONNX models first (`make_synthetic_models.py`),
 but never run Ultralytics inference.
 
@@ -234,3 +236,27 @@ rm -rf onnxruntime-*
 # Export manually with opset 12
 python3 -c "from ultralytics import YOLO; YOLO('model.pt').export(format='onnx', opset=12)"
 ```
+
+## Device selection tests
+
+`test_device_selection` (part of `./test_api.sh`) covers hardware selection without needing any
+accelerator:
+
+- `DeviceParse`, `DeviceConfigConversions` and `DeviceResolve` (13 tests) check device-string parsing,
+  that `bool` / `int` / `const char*` convert to `DeviceConfig` (so old `useGPU` call sites still
+  compile), and which providers `auto` and explicit requests resolve to, against *fake* provider
+  lists: CUDA before OpenVINO, TensorRT never automatic, warnings for unknown or missing providers.
+- `DeviceSessionTest` (4 tests) loads a synthetic model with device requests this ONNX Runtime build
+  cannot satisfy (`openvino:GPU`, `dml`, `coreml`, `rocm`, an unknown name) and checks each still
+  produces a working CPU session. Requests the build *does* support are skipped, because they need
+  real hardware.
+
+To exercise real hardware, build against an ONNX Runtime with your provider and run `device_check`
+(see [docs/guides/hardware.md](../docs/guides/hardware.md#testing-on-your-hardware)):
+
+```bash
+./build/device_check tests/api/models/det_dynamic.onnx
+```
+
+Docker: `docker build -t yolos-cpp:openvino -f Dockerfile.openvino .` builds the OpenVINO ONNX
+Runtime, runs these tests and `device_check`.
